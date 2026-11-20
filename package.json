@@ -1,0 +1,1 @@
+{"name":"scholarsync-preview","private":true,"scripts":{"dev":"python -m scholarsync.preview"}}

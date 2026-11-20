@@ -1,5 +1,8 @@
 """ScholarSync academic workflow service. Run one worker for the SQLite job store."""
 import asyncio
+import base64
+import binascii
+import hmac
 import json
 import logging
 import os
@@ -10,8 +13,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi import FastAPI, HTTPException, Request as HTTPRequest
+from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 ROOT = Path(__file__).parent
@@ -60,6 +63,27 @@ async def lifespan(app):
     await asyncio.gather(*list(jobs.values()), return_exceptions=True)
 
 app = FastAPI(title='ScholarSync', lifespan=lifespan)
+
+@app.middleware('http')
+async def protect_workspace(request: HTTPRequest, call_next):
+    username = os.getenv('SCHOLARSYNC_USERNAME')
+    password = os.getenv('SCHOLARSYNC_PASSWORD')
+    if request.url.path == '/api/health':
+        return await call_next(request)
+    if os.getenv('RENDER') or username or password:
+        if not username or not password:
+            return JSONResponse({'detail':'Workspace credentials must be configured.'}, status_code=503)
+        try:
+            scheme, encoded = request.headers.get('Authorization', '').split(' ', 1)
+            supplied = base64.b64decode(encoded, validate=True).decode('utf-8')
+            valid = scheme.lower() == 'basic' and hmac.compare_digest(supplied.encode(), f'{username}:{password}'.encode())
+        except (ValueError, UnicodeError, binascii.Error):
+            valid = False
+        if not valid:
+            return JSONResponse({'detail':'Sign in to ScholarSync.'}, status_code=401, headers={'WWW-Authenticate':'Basic realm="ScholarSync"'})
+    response = await call_next(request)
+    response.headers['Cache-Control'] = 'no-store'
+    return response
 
 class Request(BaseModel):
     topic: str = Field(min_length=5, max_length=12000)

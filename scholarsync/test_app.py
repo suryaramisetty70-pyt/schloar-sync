@@ -11,6 +11,13 @@ from scholarsync import app as module
 
 
 class WorkflowTest(unittest.TestCase):
+    def test_workspace_auth(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(module, 'DB', Path(tmp) / 'runs.sqlite3'), patch.dict(os.environ, {'SCHOLARSYNC_USERNAME':'owner','SCHOLARSYNC_PASSWORD':'test-password'}):
+            with TestClient(module.app) as client:
+                self.assertEqual(client.get('/api/health').status_code, 200)
+                self.assertEqual(client.get('/api/runs').status_code, 401)
+                self.assertEqual(client.get('/api/runs', auth=('owner','test-password')).status_code, 200)
+
     def test_workflow(self):
         async def fake_invoke(client, role, prompt):
             await asyncio.sleep(.01)
