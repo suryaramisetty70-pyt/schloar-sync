@@ -61,6 +61,7 @@ class ProviderTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result["route"],"math")
             self.assertEqual(result["answer"],"reviewed answer")
             self.assertEqual(model.await_count,3)
+            self.assertIn("Directly answer the original request", model.await_args_list[-1].args[1])
 
     def test_routes_and_block(self):
         for category in METHODS["route_message"]["emit"]:

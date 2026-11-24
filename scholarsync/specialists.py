@@ -33,13 +33,14 @@ async def execute_specialist(client, message):
         raise ProviderError("routing", "No specialist matched this request.")
     action = method["do"]
     config = action["with"]
+    final_instruction = "\nReturn the final user-facing answer. Directly answer the original request, honor its requested length, language and format, and use specialist analysis only as supporting context. Do not return internal planning notes or a learning plan unless explicitly requested."
     if action["call"] == "agent":
-        result = await generate(client, SAFETY + "\nRole: " + config["role"] + "\nGoal: " + config["goal"], message + "\nPlanner context:\n" + plan)
+        result = await generate(client, SAFETY + "\nRole: " + config["role"] + "\nGoal: " + config["goal"] + final_instruction, message + "\nPlanner context:\n" + plan)
     else:
         outputs = []
         for task in config["tasks"]:
             agent = config["agents"][task["agent"]]
-            result = await generate(client, SAFETY + "\nRole: " + agent["role"] + "\nGoal: " + agent["goal"] + "\nTask: " + task["description"] + "\nExpected output: " + task["expected_output"],
+            result = await generate(client, SAFETY + "\nRole: " + agent["role"] + "\nGoal: " + agent["goal"] + "\nTask: " + task["description"] + "\nExpected output: " + task["expected_output"] + (final_instruction if task is config["tasks"][-1] else ""),
                 "User request:\n" + message + "\nPlanner context:\n" + plan + "\nPrior task outputs:\n" + "\n".join(outputs)[-5000:], max_tokens=800 if task is config["tasks"][-1] else 400)
             outputs.append(result)
     return {"answer": result, "mode": "specialist", "route": category}
