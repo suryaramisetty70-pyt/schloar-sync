@@ -11,6 +11,20 @@ from scholarsync import app as module
 
 
 class WorkflowTest(unittest.TestCase):
+    def test_conversation_history_and_direct_answer(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(module,'DB',Path(tmp)/'runs.sqlite3'), patch.dict(os.environ,{'AI_API_KEY':'test','AI_MODEL':'test'}), patch.object(module,'generate',AsyncMock(side_effect=['A variable stores a value.','For example, int x = 5;'])) as model, patch.object(module.httpx,'AsyncClient',return_value=AsyncMock()):
+            with TestClient(module.app) as client:
+                first=client.post('/api/conversations/message',json={'message':'What is a Java variable?'}).json()
+                cid=first['conversation']
+                second=client.post('/api/conversations/message',json={'message':'Give an example','conversation':cid})
+                self.assertEqual(second.status_code,200)
+                self.assertIn('What is a Java variable?',model.await_args_list[-1].args[2])
+                self.assertEqual(len(client.get('/api/conversations/'+cid).json()),4)
+                self.assertEqual(len(client.get('/api/conversations').json()),1)
+                self.assertEqual(client.get('/studio.js').status_code,200)
+                self.assertEqual(client.get('/studio.css').status_code,200)
+                self.assertIn('Research lab',client.get('/').text)
+                self.assertEqual(client.post('/api/conversations/message',json={'message':'  '}).status_code,422)
     def test_specialist_chat_and_settings(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(module, 'DB', Path(tmp) / 'runs.sqlite3'), patch.dict(os.environ, {'AI_API_KEY':'test-secret','AI_MODEL':'gpt-4.1-mini','AI_BASE_URL':'https://api.openai.com/v1','SCHOLARSYNC_USERNAME':'owner','SCHOLARSYNC_PASSWORD':'test-password'}), patch.object(module, 'crew_answer', AsyncMock(return_value={'answer':'Test answer','mode':'specialist'})):
             with TestClient(module.app) as client:
