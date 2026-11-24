@@ -27,6 +27,33 @@ class ProviderTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(await generate(client,"test","test"),"test answer")
         self.assertEqual(calls,["api.openai.com","api.groq.com"])
 
+    async def test_retry_after_and_reasoning_budget(self):
+        import json
+        calls = []
+        def respond(request):
+            calls.append(json.loads(request.content))
+            if len(calls) == 1:
+                return httpx.Response(429, headers={"retry-after":"2"}, json={"error":{"code":"rate_limit_exceeded"}})
+            return httpx.Response(200,json={"choices":[{"message":{"content":"OK"}}]})
+        with patch.dict(os.environ, {"AI_API_KEY":"","AI_MODEL":"","GROQ_API_KEY":"fixture","GROQ_MODEL":"openai/gpt-oss-20b"}):
+            async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+                self.assertEqual(await generate(client,"test","test",max_tokens=32),"OK")
+        self.assertEqual(len(calls),2)
+        self.assertEqual(calls[0]["reasoning_effort"],"low")
+        self.assertGreaterEqual(calls[0]["max_tokens"],256)
+
+    async def test_long_retry_window_is_not_ignored(self):
+        calls = []
+        def respond(request):
+            calls.append(request)
+            return httpx.Response(429,headers={"retry-after":"120"},json={"error":{"code":"rate_limit_exceeded"}})
+        with patch.dict(os.environ, {"AI_API_KEY":"","AI_MODEL":"","GROQ_API_KEY":"fixture","GROQ_MODEL":"fixture"}):
+            async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+                with self.assertRaises(ProviderError) as error:
+                    await generate(client,"test","test")
+        self.assertEqual(error.exception.code,"rate_limit")
+        self.assertEqual(len(calls),1)
+
     async def test_specialist_math_route(self):
         planner="LANGUAGE: English\nVERDICT: PASS\nCATEGORY: math\nCLEAN REQUEST: Fractions\nBLOCK MESSAGE: none"
         with patch("scholarsync.specialists.generate", AsyncMock(side_effect=[planner,"solution","reviewed answer"])) as model:

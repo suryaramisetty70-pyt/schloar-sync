@@ -24,7 +24,7 @@ def category_from_output(raw):
 async def execute_specialist(client, message):
     planner = METHODS["planner"]["do"]["with"]
     plan = await generate(client, SAFETY + "\n" + planner["goal"],
-        planner["input"].replace("${state.user_id}", "workspace-owner").replace("${state.message}", message), max_tokens=350)
+        planner["input"].replace("${state.user_id}", "workspace-owner").replace("${state.message}", message), max_tokens=500)
     category = category_from_output(plan)
     if category == "blocked":
         return {"answer":"I can help with safe study, research and productivity questions. Please rephrase your request.", "mode":"specialist", "route":"blocked"}
@@ -40,6 +40,6 @@ async def execute_specialist(client, message):
         for task in config["tasks"]:
             agent = config["agents"][task["agent"]]
             result = await generate(client, SAFETY + "\nRole: " + agent["role"] + "\nGoal: " + agent["goal"] + "\nTask: " + task["description"] + "\nExpected output: " + task["expected_output"],
-                "User request:\n" + message + "\nPlanner context:\n" + plan + "\nPrior task outputs:\n" + "\n".join(outputs)[-12000:])
+                "User request:\n" + message + "\nPlanner context:\n" + plan + "\nPrior task outputs:\n" + "\n".join(outputs)[-5000:], max_tokens=800 if task is config["tasks"][-1] else 400)
             outputs.append(result)
     return {"answer": result, "mode": "specialist", "route": category}
