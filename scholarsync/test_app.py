@@ -21,6 +21,13 @@ class WorkflowTest(unittest.TestCase):
                 self.assertIn('What is a Java variable?',model.await_args_list[-1].args[2])
                 self.assertEqual(len(client.get('/api/conversations/'+cid).json()),4)
                 self.assertEqual(len(client.get('/api/conversations').json()),1)
+                events=client.get('/api/mission/events').json()['events']
+                self.assertEqual(len([e for e in events if e['node']=='direct_answer' and e['status']=='complete']),2)
+                self.assertNotIn('Java variable',str(events))
+                catalog=client.get('/api/mission/catalog').json()
+                self.assertEqual(sum(len(r['agents']) for r in catalog['routes']),93)
+                self.assertEqual(len(catalog['routes']),33)
+                self.assertEqual(client.get('/mission.js').status_code,200)
                 self.assertEqual(client.get('/studio.js').status_code,200)
                 self.assertEqual(client.get('/studio.css').status_code,200)
                 self.assertIn('Research lab',client.get('/').text)

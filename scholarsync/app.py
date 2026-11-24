@@ -17,7 +17,8 @@ from fastapi import FastAPI, HTTPException, Request as HTTPRequest
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from pydantic import BaseModel, Field
 from .provider import providers, generate, ProviderError
-from .specialists import execute_specialist
+from .specialists import execute_specialist, METHODS
+from . import telemetry
 
 ROOT = Path(__file__).parent
 DB = Path(os.getenv('SCHOLARSYNC_DB', str(ROOT / 'runs.sqlite3')))
@@ -56,6 +57,7 @@ def update(run_id, **fields):
 @asynccontextmanager
 async def lifespan(app):
     DB.parent.mkdir(parents=True, exist_ok=True)
+    telemetry.init(DB)
     with connect() as conn:
         conn.execute('PRAGMA journal_mode=WAL')
         conn.execute('CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, topic TEXT, status TEXT, agents TEXT, report TEXT, error TEXT, created TEXT, updated TEXT)')
@@ -142,11 +144,12 @@ async def conversation_message(request: ConversationRequest):
             async with httpx.AsyncClient(timeout=25) as client:
                 recent = [{'role':turn['role'],'content':turn['content'][:1200]} for turn in history[-6:]]
                 prompt = json.dumps({'previous_turns':recent, 'current_request':message},ensure_ascii=False)
-                if request.mode == 'specialist':
-                    result = await asyncio.wait_for(execute_specialist(client, prompt),timeout=150)
-                    answer = result['answer']
-                else:
-                    answer = await asyncio.wait_for(generate(client,DIRECT,prompt,max_tokens=1400),timeout=110)
+                with telemetry.scope(DB,request.mode):
+                    if request.mode == 'specialist':
+                        result = await asyncio.wait_for(execute_specialist(client, prompt),timeout=150)
+                        answer = result['answer']
+                    else:
+                        answer = await asyncio.wait_for(telemetry.stage('direct_answer',generate(client,DIRECT,prompt,max_tokens=1400)),timeout=110)
         except ProviderError as exc:
             raise HTTPException(502,str(exc)) from None
         except asyncio.TimeoutError:
@@ -206,7 +209,8 @@ async def execute(run_id, topic):
         agents[role]['status'] = 'running'
         update(run_id, agents=agents)
         try:
-            content = await invoke(client, role, prompt)
+            with telemetry.scope(DB,'research',run_id):
+                content = await telemetry.stage(role,invoke(client, role, prompt))
         except Exception:
             agents[role]['status'] = 'failed'
             update(run_id, agents=agents)
@@ -244,9 +248,41 @@ def stylesheet():
 def javascript():
     return FileResponse(ROOT / 'web' / 'studio.js',media_type='application/javascript')
 
+@app.get('/mission.js')
+def mission_script():
+    return FileResponse(ROOT / 'web' / 'mission.js',media_type='application/javascript')
+
+@app.get('/mission.css')
+def mission_style():
+    return FileResponse(ROOT / 'web' / 'mission.css',media_type='text/css')
+
+@app.get('/api/mission/catalog')
+def catalog():
+    routes=[]
+    for name, method in METHODS.items():
+        action=method['do']
+        config=action.get('with',{})
+        if action['call']=='crew':
+            agents=[{'id':key,'role':a['role'],'model':a.get('llm',{}).get('model','')} for key,a in config['agents'].items()]
+            tasks=[{'id':t['name'],'agent':t['agent']} for t in config['tasks']]
+        elif action['call']=='agent':
+            agents=[{'id':name,'role':config['role'],'model':config.get('llm',{}).get('model','')}]
+            tasks=[]
+        else:
+            agents=[];tasks=[]
+        routes.append({'id':name,'listen':method.get('listen'),'emit':method.get('emit',[]),'kind':action['call'],'agents':agents,'tasks':tasks})
+    return {'routes':routes,'engine':'Lightweight hosted text executor','external_tools':False,'providers':[{'name':p.name,'model':p.model} for p in providers()]}
+
+@app.get('/api/mission/events')
+def mission_events():
+    with connect() as conn:
+        recent=[dict(r) for r in conn.execute('SELECT * FROM traces ORDER BY id DESC LIMIT 150')]
+        counts=dict(conn.execute('SELECT status, count(*) FROM traces GROUP BY status').fetchall())
+    return {'events':recent,'counts':counts}
+
 @app.get('/api/health')
 def health():
-    return {'status':'ok','ai_configured':configured(),'agents':len(ROLES),'version':'3.0-studio'}
+    return {'status':'ok','ai_configured':configured(),'agents':len(ROLES),'version':'4.0-mission'}
 
 @app.get('/api/runs')
 def runs():

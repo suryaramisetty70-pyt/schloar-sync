@@ -5,6 +5,7 @@ import time
 from weakref import WeakKeyDictionary
 from dataclasses import dataclass, field
 import httpx
+from .telemetry import event
 
 
 class ProviderError(Exception):
@@ -95,6 +96,7 @@ async def generate(client, system, prompt, *, max_tokens=1000):
                     response = await client.post(provider.base + "/chat/completions",
                          headers={"Authorization":"Bearer " + provider.key}, json=payload)
                     if response.is_error:
+                        event("provider", "failed", provider=provider.name)
                         last = classify(response)
                         if last.code == "rate_limit":
                             cooldowns[identity] = time.monotonic() + retry_delay(response, attempt)
@@ -112,6 +114,7 @@ async def generate(client, system, prompt, *, max_tokens=1000):
                         continue
                     if provider.name == "Groq":
                         cooldowns[identity] = time.monotonic() + 2.1
+                    event("provider", "complete", provider=provider.name)
                     return content.strip()
                 except httpx.TimeoutException:
                     last = ProviderError("timeout", "AI provider request timed out. Try a shorter question.")
