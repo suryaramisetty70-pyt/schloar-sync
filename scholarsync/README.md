@@ -1,16 +1,16 @@
 # ScholarSync Intelligence Studio
 
-Standalone academic multi-agent dashboard. This implementation is separate from the original CrewAI scaffold because its source flow was not present in the repository. Four specialized LLM calls perform planning, parallel evidence analysis and critique, and final writing. No fake agent results are generated.
+Academic multi-agent dashboard with four research specialists and a separate restored CrewAI specialist chat (93 agent configurations; 28 specialist workflows). No fake agent results are generated. Hosted specialist chat is text-only, with external tools and write actions disabled.
 
 ## Local setup
 
 Run from the repository root with Python 3.10+:
 
 ```sh
-pip install -r scholarsync/requirements.txt
+uv sync --locked
 export AI_API_KEY='your-provider-key'
 export AI_MODEL='your-model-name'
-uvicorn scholarsync.app:app --host 127.0.0.1 --port 8000
+uv run python -m uvicorn scholarsync.app:app --host 127.0.0.1 --port 8000
 ```
 
 Open http://127.0.0.1:8000. On Windows PowerShell use `$env:AI_API_KEY='...'` and `$env:AI_MODEL='...'`. An optional `AI_BASE_URL` can point to a compatible chat-completions endpoint (defaults to OpenAI). Keep credentials on the server only.
@@ -19,6 +19,6 @@ The app can open locally without an AI key, but launches are disabled until conf
 
 ## Render preview deployment
 
-Connect this repository as a Blueprint using the root `render.yaml`. Choose a free web service and set the four prompted variables: `AI_API_KEY`, `AI_MODEL`, `SCHOLARSYNC_USERNAME` and `SCHOLARSYNC_PASSWORD`. Set `AI_BASE_URL` if you use a compatible alternative provider. The workspace requires sign-in on Render over HTTPS; it is not meant for multiple independent users. Use strong unique credentials. A free Render instance has ephemeral storage, so run history may be lost on restart or redeploy. For permanent history, arrange durable database storage before production use.
+Connect this repository as a Blueprint using the root `render.yaml`. Set `AI_API_KEY`, `SCHOLARSYNC_USERNAME` and `SCHOLARSYNC_PASSWORD` in Render's private environment settings. The default research model is `gpt-4.1-mini`. Set `AI_BASE_URL` if you use a compatible alternative provider for the research dashboard; specialist chat requires OpenAI. The workspace requires sign-in on Render over HTTPS; it is not meant for multiple independent users. Use strong unique credentials. A free Render instance has ephemeral storage, so run history may be lost on restart or redeploy. CrewAI may also exceed low-memory instance limits; check service logs and capacity before choosing a paid plan.
 
-The service analyzes user-supplied material; it does not retrieve sources or verify citations. Existing original CrewAI modules can be integrated when the missing source is available.
+The service analyzes user-supplied material; it does not retrieve sources or verify citations. Once deployed, sign in, use Verify provider, and then run both a research workflow and a specialist question to establish live generation. No private key is included in the repo. Run local tests with `uv run python -m unittest scholarsync.test_app -v`.

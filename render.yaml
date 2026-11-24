@@ -3,14 +3,16 @@ services:
     name: scholarsync-ai
     runtime: python
     plan: free
-    buildCommand: pip install -r scholarsync/requirements.txt
-    startCommand: python -m uvicorn scholarsync.app:app --host 0.0.0.0 --port $PORT
+    buildCommand: pip install uv && uv sync --locked
+    startCommand: uv run --no-sync python -m uvicorn scholarsync.app:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/health
     envVars:
       - key: AI_API_KEY
         sync: false
       - key: AI_MODEL
-        sync: false
+        value: gpt-4.1-mini
+      - key: PYTHON_VERSION
+        value: "3.12.14"
       - key: AI_BASE_URL
         value: https://api.openai.com/v1
       - key: SCHOLARSYNC_USERNAME

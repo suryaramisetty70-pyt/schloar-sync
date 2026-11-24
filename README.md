@@ -1,17 +1,17 @@
-# multi_agent_ai_system Flow
+# ScholarSync
 
-This project defines a declarative CrewAI Flow in `src/multi_agent_ai_system/flow.yaml`.
+ScholarSync includes a research dashboard and the restored declarative CrewAI specialist assistant in `src/multi_agent_ai_system/flow.json`.
 
 ## Install
 
 ```bash
-crewai install
+uv sync --locked
 ```
 
 ## Run
 
 ```bash
-crewai run
+uv run python -m uvicorn scholarsync.app:app --host 127.0.0.1 --port 8000
 ```
 
-Edit the declarative flow definition at `src/multi_agent_ai_system/flow.yaml` to change the flow. Add reusable crews under `src/multi_agent_ai_system/crews/`, custom Python tools under `src/multi_agent_ai_system/tools/`, and shared knowledge files under `src/multi_agent_ai_system/knowledge/`.
+Open http://127.0.0.1:8000. See [setup and deployment](scholarsync/README.md) for Render environment variables and testing. Live generation requires your own valid API key.

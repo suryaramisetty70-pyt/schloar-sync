@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import sqlite3
+import sys
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -25,6 +26,7 @@ ROLES = {'plan': ('Research planner', 'Create a focused academic research plan a
          'report': ('Report writer', 'Synthesize the other agents’ work into a structured academic brief. Distinguish evidence from inference.')}
 jobs: dict[str, asyncio.Task] = {}
 limit = asyncio.Semaphore(3)
+chat_limit = asyncio.Semaphore(1)
 
 def now():
     return datetime.now(timezone.utc).isoformat()
@@ -81,12 +83,71 @@ async def protect_workspace(request: HTTPRequest, call_next):
             valid = False
         if not valid:
             return JSONResponse({'detail':'Sign in to ScholarSync.'}, status_code=401, headers={'WWW-Authenticate':'Basic realm="ScholarSync"'})
+    if request.method not in ('GET', 'HEAD', 'OPTIONS'):
+        origin = request.headers.get('Origin')
+        host = request.headers.get('host', '')
+        if origin and origin not in (f'https://{host}', f'http://{host}'):
+            return JSONResponse({'detail':'Cross-origin requests are not allowed.'}, status_code=403)
     response = await call_next(request)
     response.headers['Cache-Control'] = 'no-store'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
     return response
 
 class Request(BaseModel):
     topic: str = Field(min_length=5, max_length=12000)
+
+class ChatRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=8000)
+
+def crew_configured():
+    return bool(os.getenv('AI_API_KEY') and os.getenv('AI_BASE_URL', 'https://api.openai.com/v1').rstrip('/') == 'https://api.openai.com/v1')
+
+async def crew_answer(message):
+    if chat_limit.locked():
+        raise HTTPException(429, 'Another specialist request is running.')
+    async with chat_limit:
+        env = dict(os.environ, OPENAI_API_KEY=os.environ['AI_API_KEY'], CREWAI_TRACING_ENABLED='false', OTEL_SDK_DISABLED='true')
+        proc = await asyncio.create_subprocess_exec(sys.executable, '-m', 'multi_agent_ai_system.worker',
+             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL, env=env)
+        try:
+            stdout, _ = await asyncio.wait_for(proc.communicate(json.dumps({'message':message,'user_id':'workspace-owner'}).encode()), timeout=240)
+            if proc.returncode:
+                raise ValueError('Worker failed')
+            result = json.loads(stdout.decode().strip().splitlines()[-1])
+            if not isinstance(result.get('answer'), str) or not result['answer'].strip():
+                raise ValueError('No response')
+            return {'answer':result['answer'], 'mode':'specialist'}
+        except asyncio.TimeoutError:
+            raise HTTPException(504, 'Specialist request timed out; try a narrower question.')
+        except (ValueError, KeyError, IndexError, UnicodeError):
+            raise HTTPException(502, 'Specialist execution failed. Verify provider access and model availability.')
+        finally:
+            if proc.returncode is None:
+                proc.kill()
+                await proc.wait()
+
+@app.get('/api/settings')
+def settings():
+    return {'ai_configured':configured(), 'specialists_configured':crew_configured(), 'model':os.getenv('AI_MODEL',''), 'external_tools':False}
+
+@app.post('/api/settings/verify')
+async def verify():
+    if not configured():
+        raise HTTPException(503,'Configure AI_API_KEY and AI_MODEL in Render.')
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.get(os.getenv('AI_BASE_URL','https://api.openai.com/v1').rstrip('/')+'/models/'+os.environ['AI_MODEL'], headers={'Authorization':'Bearer '+os.environ['AI_API_KEY']})
+            response.raise_for_status()
+    except httpx.HTTPError:
+        raise HTTPException(502,'Provider verification failed. Check the key, model, and provider.')
+    return {'verified':True,'message':'Configured research model is accessible. Generation still needs a live run.'}
+
+@app.post('/api/chat')
+async def chat(request: ChatRequest):
+    if not crew_configured():
+        raise HTTPException(503,'Configure an OpenAI API key in Render to enable specialist chat.')
+    return await crew_answer(request.message)
 
 def configured():
     return bool(os.getenv('AI_API_KEY') and os.getenv('AI_MODEL'))
