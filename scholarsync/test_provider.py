@@ -69,3 +69,14 @@ class ProviderTests(unittest.IsolatedAsyncioTestCase):
             verdict="BLOCK" if category=="blocked" else "PASS"
             self.assertEqual(category_from_output(f"VERDICT: {verdict}\nCATEGORY: {label}"),category)
         self.assertEqual(category_from_output("unparseable"),"blocked")
+
+    async def test_langgraph_general_critic_and_blocked(self):
+        general="LANGUAGE: English\nVERDICT: PASS\nCATEGORY: general\nCLEAN REQUEST: Explain a concept\nBLOCK MESSAGE: none"
+        with patch("scholarsync.specialists.generate",AsyncMock(side_effect=[general,"draft","review","final"])) as model:
+            result=await execute_specialist(None,"Explain a concept")
+            self.assertEqual(result["answer"],"final")
+            self.assertEqual(model.await_count,4)
+        with patch("scholarsync.specialists.generate",AsyncMock(return_value="VERDICT: BLOCK\nCATEGORY: general")) as model:
+            result=await execute_specialist(None,"test")
+            self.assertEqual(result["route"],"blocked")
+            self.assertEqual(model.await_count,1)

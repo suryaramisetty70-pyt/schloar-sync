@@ -9,6 +9,7 @@ dependencies = [
     "exa-py",
     "fastapi>=0.115,<1",
     "httpx[socks]>=0.28,<1",
+    "langgraph>=1.0,<2",
     "pydantic",
     "uvicorn>=0.30,<1",
 ]

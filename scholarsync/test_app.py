@@ -32,10 +32,11 @@ class WorkflowTest(unittest.TestCase):
                 self.assertEqual(client.get('/studio.css').status_code,200)
                 self.assertIn('cinema-stage',client.get('/').text)
                 self.assertEqual(client.get('/studio',follow_redirects=False).status_code,307)
-                self.assertIn('Live network',client.get('/').text)
+                self.assertIn('Workflow Canvas',client.get('/').text)
+                self.assertEqual(client.get('/cinema/workflow.js').status_code,200)
                 self.assertEqual(client.get('/cinema/network.js').status_code,200)
                 trace=client.get('/api/mission/events/'+first['trace_id']).json()['events']
-                self.assertEqual([e['status'] for e in trace],['running','complete'])
+                self.assertEqual([(e['node'],e['status']) for e in trace],[('request','complete'),('direct_answer','running'),('direct_answer','complete'),('final_response','complete')])
                 self.assertEqual(client.get('/cinema/app.js').status_code,200)
                 clip=client.get('/cinema/assets/aria/intro.mp4',headers={'Range':'bytes=0-1023'})
                 self.assertEqual(clip.status_code,206)
@@ -53,6 +54,20 @@ class WorkflowTest(unittest.TestCase):
                     z.writestr('word/document.xml','<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:r><w:t>Hello</w:t></w:r></w:p></w:document>')
                 self.assertEqual(client.post('/api/document/extract?filename=notes.docx',content=buf.getvalue()).json()['text'],'Hello')
                 self.assertEqual(client.post('/api/document/extract?filename=bad.exe',content=b'bad').status_code,422)
+
+    def test_langgraph_live_trace(self):
+        planner='LANGUAGE: English\nVERDICT: PASS\nCATEGORY: math\nCLEAN REQUEST: Fractions\nBLOCK MESSAGE: none'
+        with tempfile.TemporaryDirectory() as tmp, patch.object(module,'DB',Path(tmp)/'runs.sqlite3'), patch.dict(os.environ,{'AI_API_KEY':'fixture','AI_MODEL':'fixture'}), patch('scholarsync.specialists.generate',AsyncMock(side_effect=[planner,'solution','final answer'])), patch.object(module.httpx,'AsyncClient',return_value=AsyncMock()):
+            with TestClient(module.app) as client:
+                response=client.post('/api/conversations/message',json={'message':'Explain fractions','mode':'specialist'})
+                self.assertEqual(response.status_code,200)
+                trace=client.get('/api/mission/events/'+response.json()['trace_id']).json()['events']
+                completed=[e['node'] for e in trace if e['status']=='complete']
+                self.assertIn('planner',completed)
+                self.assertIn('route_message',completed)
+                self.assertIn('handle_math',completed)
+                self.assertIn('final_response',completed)
+                self.assertNotIn('handle_coding',completed)
 
     def test_reference_search(self):
         import httpx

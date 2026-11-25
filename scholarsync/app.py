@@ -150,11 +150,13 @@ async def conversation_message(request: ConversationRequest):
                 recent = [{'role':turn['role'],'content':turn['content'][:1200]} for turn in history[-6:]]
                 prompt = json.dumps({'previous_turns':recent, 'current_request':message},ensure_ascii=False)
                 with telemetry.scope(DB,request.mode,request.trace_id) as trace_id:
+                    telemetry.event('request','complete')
                     if request.mode == 'specialist':
                         result = await asyncio.wait_for(execute_specialist(client, prompt),timeout=150)
                         answer = result['answer']
                     else:
                         answer = await asyncio.wait_for(telemetry.stage('direct_answer',generate(client,DIRECT,prompt,max_tokens=1400)),timeout=110)
+                    telemetry.event('final_response','complete')
         except ProviderError as exc:
             raise HTTPException(502,str(exc)) from None
         except asyncio.TimeoutError:
@@ -282,7 +284,7 @@ def catalog():
         else:
             agents=[];tasks=[]
         routes.append({'id':name,'listen':method.get('listen'),'emit':method.get('emit',[]),'kind':action['call'],'agents':agents,'tasks':tasks})
-    return {'routes':routes,'engine':'Lightweight hosted text executor','external_tools':False,'providers':[{'name':p.name,'model':p.model} for p in providers()]}
+    return {'routes':routes,'engine':'LangGraph specialist orchestration using CrewAI declarations','external_tools':False,'providers':[{'name':p.name,'model':p.model} for p in providers()]}
 
 @app.get('/api/mission/events')
 def mission_events():
@@ -355,7 +357,7 @@ async def reference_search(q: str):
 
 @app.get('/api/health')
 def health():
-    return {'status':'ok','ai_configured':configured(),'agents':len(ROLES),'version':'6.0-aria-unified'}
+    return {'status':'ok','ai_configured':configured(),'agents':len(ROLES),'version':'7.0-workflow-canvas'}
 
 @app.get('/api/runs')
 def runs():

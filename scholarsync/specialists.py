@@ -2,6 +2,8 @@
 import json
 import re
 from pathlib import Path
+from typing import TypedDict
+from langgraph.graph import StateGraph, START, END
 from .provider import generate, ProviderError
 from .telemetry import stage, event
 
@@ -22,12 +24,12 @@ def category_from_output(raw):
     return category if category in METHODS["route_message"]["emit"] else "general"
 
 
-async def execute_specialist(client, message):
+async def plan_request(client, message):
     planner = METHODS["planner"]["do"]["with"]
-    plan = await stage("planner",generate(client, SAFETY + "\n" + planner["goal"],
+    return await stage("planner",generate(client, SAFETY + "\n" + planner["goal"],
         planner["input"].replace("${state.user_id}", "workspace-owner").replace("${state.message}", message), max_tokens=500))
-    category = category_from_output(plan)
-    event("route:"+category,"complete")
+
+async def run_route(client, message, plan, category):
     if category == "blocked":
         return {"answer":"I can help with safe study, research and productivity questions. Please rephrase your request.", "mode":"specialist", "route":"blocked"}
     method = next((m for m in METHODS.values() if m.get("listen") == category), None)
@@ -46,3 +48,56 @@ async def execute_specialist(client, message):
                 "User request:\n" + message + "\nPlanner context:\n" + plan + "\nPrior task outputs:\n" + "\n".join(outputs)[-5000:], max_tokens=800 if task is config["tasks"][-1] else 400))
             outputs.append(result)
     return {"answer": result, "mode": "specialist", "route": category}
+
+
+class WorkflowState(TypedDict, total=False):
+    message: str
+    plan: str
+    category: str
+    answer: str
+
+
+def compile_workflow(client):
+    """A bounded LangGraph workflow using the existing CrewAI declarations."""
+    graph=StateGraph(WorkflowState)
+    async def planner_node(state):
+        return {"plan":await plan_request(client,state["message"])}
+    async def router_node(state):
+        async def choose():
+            return category_from_output(state["plan"])
+        category=await stage("route_message",choose())
+        event("route:"+category,"complete")
+        return {"category":category}
+    graph.add_node("planner",planner_node)
+    graph.add_node("route_message",router_node)
+    graph.add_edge(START,"planner")
+    graph.add_edge("planner","route_message")
+    mapping={}
+    for category in METHODS["route_message"]["emit"]:
+        method=next((name for name,m in METHODS.items() if m.get("listen")==category),None)
+        name=method or "safe_blocked"
+        mapping[category]=name
+        async def handler(state, category=category, name=name):
+            result=await stage(name,run_route(client,state["message"],state["plan"],category))
+            return {"answer":result["answer"]}
+        graph.add_node(name,handler)
+        graph.add_edge(name,"critic" if category=="general" else END)
+    async def critic_node(state):
+        async def review():
+            config=METHODS["critic"]["do"]["with"]
+            answer=state["answer"]
+            for task in config["tasks"]:
+                agent=config["agents"][task["agent"]]
+                answer=await stage(agent["role"],generate(client,SAFETY+"\nRole: "+agent["role"]+"\nTask: "+task["description"]+"\nReturn only the revised user-facing answer. Maintain requested language, length and style.",
+                    "Original request:\n"+state["message"]+"\nPlanner context:\n"+state["plan"]+"\nAnswer to review:\n"+answer,max_tokens=800))
+            return answer
+        return {"answer":await stage("critic",review())}
+    graph.add_node("critic",critic_node)
+    graph.add_edge("critic",END)
+    graph.add_conditional_edges("route_message",lambda state:state["category"],mapping)
+    return graph.compile()
+
+
+async def execute_specialist(client, message):
+    result=await compile_workflow(client).ainvoke({"message":message})
+    return {"answer":result["answer"],"mode":"specialist","route":result["category"]}
