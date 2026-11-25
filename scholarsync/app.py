@@ -342,7 +342,16 @@ async def reference_search(q: str):
             results=response.json()['query']['search']
         return {'source':'Wikipedia reference search','results':[{'title':r['title'],'url':'https://en.wikipedia.org/?curid='+str(int(r['pageid']))} for r in results]}
     except (httpx.HTTPError,ValueError,KeyError,TypeError):
-        raise HTTPException(502,'Reference search is temporarily unavailable.') from None
+        pass
+    try:
+        async with httpx.AsyncClient(timeout=12,follow_redirects=False) as client:
+            response=await client.get('https://api.crossref.org/works',params={'query.bibliographic':query,'rows':5,'select':'title,DOI'},headers={'User-Agent':'ScholarSync/6.0'})
+            response.raise_for_status()
+            items=response.json()['message']['items']
+        return {'source':'Crossref scholarly reference search','results':[{'title':item['title'][0],'url':'https://doi.org/'+item['DOI']} for item in items if item.get('title') and item.get('DOI')]}
+    except (httpx.HTTPError,ValueError,KeyError,TypeError):
+        from urllib.parse import urlencode
+        return {'source':'Reference services unavailable; open the search manually','results':[{'title':'Search scholarly publications on Crossref','url':'https://search.crossref.org/?'+urlencode({'q':query})}],'fallback':True}
 
 @app.get('/api/health')
 def health():
