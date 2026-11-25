@@ -44,7 +44,10 @@ async def run_route(client, message, plan, category):
         outputs = []
         for task in config["tasks"]:
             agent = config["agents"][task["agent"]]
-            result = await stage(agent["role"],generate(client, SAFETY + "\nRole: " + agent["role"] + "\nGoal: " + agent["goal"] + "\nTask: " + task["description"] + "\nExpected output: " + task["expected_output"] + (final_instruction if task is config["tasks"][-1] else ""),
+            final = task is config["tasks"][-1]
+            system = (SAFETY + "\nRole: final response synthesizer." + final_instruction if final else
+                      SAFETY + "\nRole: " + agent["role"] + "\nGoal: " + agent["goal"] + "\nTask: " + task["description"] + "\nExpected output: " + task["expected_output"])
+            result = await stage(agent["role"],generate(client, system,
                 "User request:\n" + message + "\nPlanner context:\n" + plan + "\nPrior task outputs:\n" + "\n".join(outputs)[-5000:], max_tokens=800 if task is config["tasks"][-1] else 400))
             outputs.append(result)
     return {"answer": result, "mode": "specialist", "route": category}
