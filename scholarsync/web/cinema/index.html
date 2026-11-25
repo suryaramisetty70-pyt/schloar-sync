@@ -41,7 +41,7 @@
 
       <div class="top-right">
         <button type="button" class="pill-toggle" id="aria-intro-btn">Replay Intro</button>
-        <button type="button" class="pill-toggle" id="aria-voice-btn">Voice: Off</button>
+        <button type="button" class="pill-toggle" id="aria-voice-btn" aria-pressed="true">Voice: On</button>
       </div>
     </header>
 
@@ -92,13 +92,13 @@
         <h2 id="heading"></h2>
       </div>
       <div class="modal-actions">
-        <button id="speak-last" type="button" class="pill-toggle">Speak</button>
+        <button id="speak-last" type="button" class="pill-toggle" title="Replay or stop Aria's voice">Speak / Stop</button>
         <button id="close" type="button" class="close-btn" aria-label="Close">×</button>
       </div>
     </div>
     <section id="content"></section>
   </aside>
 
-  <script src="/cinema/app.js"></script><script src="/cinema/network.js"></script><script src="/cinema/workflow.js"></script><link rel="stylesheet" href="/cinema/workflow.css">
+  <script src="/cinema/app.js?v=8-voice"></script><script src="/cinema/network.js"></script><script src="/cinema/workflow.js"></script><link rel="stylesheet" href="/cinema/workflow.css">
 </body>
 </html>
