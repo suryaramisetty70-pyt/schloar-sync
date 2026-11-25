@@ -36,7 +36,7 @@
         <button type="button" class="nav-link" data-open="Agent Directory">Agents</button>
         <button type="button" class="nav-link" data-open="Workflows">Pipelines</button>
         <button type="button" class="nav-link" data-open="Coding Assistant">Workspace</button>
-        <button type="button" class="nav-link" data-open="Provider Settings">Settings</button><button type="button" class="nav-link" id="studio-link">Studio</button>
+        <button type="button" class="nav-link" data-open="Provider Settings">Settings</button><button type="button" class="nav-link" data-open="Mission Control">Live network</button>
       </nav>
 
       <div class="top-right">
@@ -62,7 +62,7 @@
         </div>
 
         <div class="rail-label" style="margin-top:14px">EXECUTION</div>
-        <div class="pipeline-mini" id="exec-list" data-open="Execution Monitor"></div>
+        <div class="pipeline-mini" id="exec-list" data-open="Mission Control"></div><div id="rail-network" class="live-network"></div>
 
         <button type="button" class="scan-action" id="aria-scan-btn">Open Coding Workspace</button>
       </aside>
@@ -79,7 +79,7 @@
 
       <div class="command-dock">
         <input id="search" type="text" aria-label="Ask Aria" placeholder="Ask Aria anything — code, research, papers, data, or workspace...">
-        <button type="button" class="send-btn" id="ask">Send</button>
+        <button type="button" class="pill-toggle" id="microphone" aria-label="Voice input">🎙</button><button type="button" class="send-btn" id="ask">Send</button>
       </div>
     </footer>
   </div>
@@ -99,6 +99,6 @@
     <section id="content"></section>
   </aside>
 
-  <script src="/cinema/app.js"></script>
+  <script src="/cinema/app.js"></script><script src="/cinema/network.js"></script>
 </body>
 </html>

@@ -8,13 +8,16 @@ import logging
 import os
 import sqlite3
 import uuid
+import io
+import zipfile
+import xml.etree.ElementTree as ET
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request as HTTPRequest
-from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
+from fastapi.responses import FileResponse, StreamingResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from .provider import providers, generate, ProviderError
@@ -109,6 +112,7 @@ class ChatRequest(BaseModel):
 class ConversationRequest(ChatRequest):
     conversation: str | None = Field(default=None, max_length=64)
     mode: str = Field(default='chat', pattern='^(chat|specialist)$')
+    trace_id: str | None = Field(default=None, pattern='^[a-f0-9]{32}$')
 
 DIRECT = """You are ScholarSync, a friendly academic tutor and productivity assistant.
 Answer the current question directly, match the requested language and length, and use simple examples for beginners.
@@ -145,7 +149,7 @@ async def conversation_message(request: ConversationRequest):
             async with httpx.AsyncClient(timeout=25) as client:
                 recent = [{'role':turn['role'],'content':turn['content'][:1200]} for turn in history[-6:]]
                 prompt = json.dumps({'previous_turns':recent, 'current_request':message},ensure_ascii=False)
-                with telemetry.scope(DB,request.mode):
+                with telemetry.scope(DB,request.mode,request.trace_id) as trace_id:
                     if request.mode == 'specialist':
                         result = await asyncio.wait_for(execute_specialist(client, prompt),timeout=150)
                         answer = result['answer']
@@ -159,7 +163,7 @@ async def conversation_message(request: ConversationRequest):
             conn.execute('INSERT OR IGNORE INTO conversations VALUES (?,?,?)',(cid,message[:70],now()))
             conn.executemany('INSERT INTO messages(conversation,role,content) VALUES (?,?,?)',[(cid,'user',message),(cid,'assistant',answer)])
             conn.execute('UPDATE conversations SET updated=? WHERE id=?',(now(),cid))
-        return {'conversation':cid,'answer':answer,'mode':request.mode}
+        return {'conversation':cid,'answer':answer,'mode':request.mode,'trace_id':trace_id}
 
 def crew_configured():
     return configured()
@@ -243,7 +247,7 @@ def index():
 
 @app.get('/studio')
 def studio():
-    return FileResponse(ROOT / 'web' / 'studio.html')
+    return RedirectResponse('/?view=mission',status_code=307)
 
 app.mount('/cinema', StaticFiles(directory=ROOT / 'web' / 'cinema'), name='cinema')
 
@@ -287,9 +291,62 @@ def mission_events():
         counts=dict(conn.execute('SELECT status, count(*) FROM traces GROUP BY status').fetchall())
     return {'events':recent,'counts':counts}
 
+@app.get('/api/mission/events/{trace_id}')
+def trace_events(trace_id: str):
+    with connect() as conn:
+        return {'events':[dict(r) for r in conn.execute('SELECT * FROM traces WHERE run=? ORDER BY id LIMIT 200',(trace_id,))]}
+
+def extract_document(data, filename):
+    suffix=Path(filename).suffix.lower()
+    if suffix=='.txt':
+        return data.decode('utf-8',errors='replace')[:6000]
+    if suffix=='.docx':
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            info=archive.getinfo('word/document.xml')
+            if info.file_size>2_000_000:
+                raise ValueError('Document too large')
+            root=ET.fromstring(archive.read(info))
+            return '\n'.join(''.join(p.itertext()) for p in root.iter('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p'))[:6000]
+    if suffix=='.pdf':
+        from pypdf import PdfReader
+        reader=PdfReader(io.BytesIO(data))
+        if reader.is_encrypted:
+            raise ValueError('Encrypted PDF')
+        return '\n'.join(page.extract_text() or '' for page in reader.pages[:20])[:6000]
+    raise ValueError('Unsupported file')
+
+@app.post('/api/document/extract')
+async def document_extract(request: HTTPRequest, filename: str):
+    data=bytearray()
+    async for chunk in request.stream():
+        data.extend(chunk)
+        if len(data)>5*1024*1024:
+            raise HTTPException(413,'Maximum document size is 5 MB.')
+    try:
+        result=await asyncio.wait_for(asyncio.to_thread(extract_document,bytes(data),filename),timeout=15)
+        if not result.strip():
+            raise ValueError('No extractable text')
+    except Exception:
+        raise HTTPException(422,'Could not extract text. Use an unencrypted text-based PDF, DOCX or TXT file.') from None
+    return {'text':result,'limit':6000}
+
+@app.get('/api/reference-search')
+async def reference_search(q: str):
+    query=q.strip()
+    if not query or len(query)>200:
+        raise HTTPException(422,'Enter a search query up to 200 characters.')
+    try:
+        async with httpx.AsyncClient(timeout=12,follow_redirects=False) as client:
+            response=await client.get('https://en.wikipedia.org/w/api.php',params={'action':'query','list':'search','srsearch':query,'srlimit':5,'format':'json'},headers={'User-Agent':'ScholarSync/6.0 (student research reference search)'})
+            response.raise_for_status()
+            results=response.json()['query']['search']
+        return {'source':'Wikipedia reference search','results':[{'title':r['title'],'url':'https://en.wikipedia.org/?curid='+str(int(r['pageid']))} for r in results]}
+    except (httpx.HTTPError,ValueError,KeyError,TypeError):
+        raise HTTPException(502,'Reference search is temporarily unavailable.') from None
+
 @app.get('/api/health')
 def health():
-    return {'status':'ok','ai_configured':configured(),'agents':len(ROLES),'version':'5.0-aria'}
+    return {'status':'ok','ai_configured':configured(),'agents':len(ROLES),'version':'6.0-aria-unified'}
 
 @app.get('/api/runs')
 def runs():

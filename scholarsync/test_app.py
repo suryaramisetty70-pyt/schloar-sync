@@ -31,12 +31,37 @@ class WorkflowTest(unittest.TestCase):
                 self.assertEqual(client.get('/studio.js').status_code,200)
                 self.assertEqual(client.get('/studio.css').status_code,200)
                 self.assertIn('cinema-stage',client.get('/').text)
-                self.assertIn('Research lab',client.get('/studio').text)
+                self.assertEqual(client.get('/studio',follow_redirects=False).status_code,307)
+                self.assertIn('Live network',client.get('/').text)
+                self.assertEqual(client.get('/cinema/network.js').status_code,200)
+                trace=client.get('/api/mission/events/'+first['trace_id']).json()['events']
+                self.assertEqual([e['status'] for e in trace],['running','complete'])
                 self.assertEqual(client.get('/cinema/app.js').status_code,200)
                 clip=client.get('/cinema/assets/aria/intro.mp4',headers={'Range':'bytes=0-1023'})
                 self.assertEqual(clip.status_code,206)
                 self.assertEqual(len(clip.content),1024)
                 self.assertEqual(client.post('/api/conversations/message',json={'message':'  '}).status_code,422)
+
+    def test_document_extraction(self):
+        import io,zipfile
+        with tempfile.TemporaryDirectory() as tmp, patch.object(module,'DB',Path(tmp)/'runs.sqlite3'):
+            with TestClient(module.app) as client:
+                r=client.post('/api/document/extract?filename=notes.txt',content=b'Java arrays')
+                self.assertEqual(r.json()['text'],'Java arrays')
+                buf=io.BytesIO()
+                with zipfile.ZipFile(buf,'w') as z:
+                    z.writestr('word/document.xml','<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:r><w:t>Hello</w:t></w:r></w:p></w:document>')
+                self.assertEqual(client.post('/api/document/extract?filename=notes.docx',content=buf.getvalue()).json()['text'],'Hello')
+                self.assertEqual(client.post('/api/document/extract?filename=bad.exe',content=b'bad').status_code,422)
+
+    def test_reference_search(self):
+        import httpx
+        fixture=httpx.Response(200,json={'query':{'search':[{'title':'Java','pageid':123}]}},request=httpx.Request('GET','https://en.wikipedia.org/w/api.php'))
+        mock=AsyncMock();mock.__aenter__.return_value.get.return_value=fixture
+        with tempfile.TemporaryDirectory() as tmp, patch.object(module,'DB',Path(tmp)/'runs.sqlite3'), patch.object(module.httpx,'AsyncClient',return_value=mock):
+            with TestClient(module.app) as client:
+                d=client.get('/api/reference-search?q=Java').json()
+                self.assertEqual(d['results'][0]['url'],'https://en.wikipedia.org/?curid=123')
     def test_specialist_chat_and_settings(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(module, 'DB', Path(tmp) / 'runs.sqlite3'), patch.dict(os.environ, {'AI_API_KEY':'test-secret','AI_MODEL':'gpt-4.1-mini','AI_BASE_URL':'https://api.openai.com/v1','SCHOLARSYNC_USERNAME':'owner','SCHOLARSYNC_PASSWORD':'test-password'}), patch.object(module, 'crew_answer', AsyncMock(return_value={'answer':'Test answer','mode':'specialist'})):
             with TestClient(module.app) as client:
