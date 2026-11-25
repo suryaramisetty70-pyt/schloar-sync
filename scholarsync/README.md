@@ -2,6 +2,8 @@
 
 Academic multi-agent dashboard with four research specialists and a lightweight hosted executor of the restored CrewAI specialist declarations (93 agent configurations; 28 specialist workflows). The hosted executor avoids starting a memory-intensive CrewAI process for each message. No fake agent results are generated. Hosted specialist chat is text-only, with external tools and write actions disabled.
 
+The default home page is the Aria cinematic interface, adapted from the supplied frontend. It has four locally hosted animation clips, optional browser voice, server-backed conversations, real research jobs, searchable agent configurations, recent execution telemetry, document-text questions, and local numeric summaries. The original Studio and Mission Control remain available at /studio. The uploaded prototype's arbitrary server-file reader and placeholder statistics are not exposed; the coding workspace accepts pasted code and links to the public repository.
+
 ## Local setup
 
 Run from the repository root with Python 3.10+:

@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ScholarSync • AI Intelligence</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/cinema/style.css">
+</head>
+<body>
+  <!-- Full-Frame 16:9 Cinematic Aria Stage -->
+  <div id="cinema-stage" aria-hidden="true">
+    <video class="aria-vid active" data-state="intro" src="/cinema/assets/aria/intro.mp4" muted playsinline preload="metadata"></video>
+    <video class="aria-vid" data-state="idle" src="/cinema/assets/aria/idle.mp4" muted loop playsinline preload="metadata"></video>
+    <video class="aria-vid" data-state="thinking" src="/cinema/assets/aria/thinking.mp4" muted loop playsinline preload="metadata"></video>
+    <video class="aria-vid" data-state="speaking" src="/cinema/assets/aria/speaking.mp4" muted loop playsinline preload="metadata"></video>
+    <div class="cinema-vignette"></div>
+    <div class="watermark-mask"></div>
+  </div>
+
+  <!-- Minimalist Floating AAA HUD -->
+  <div id="hud">
+    <!-- Top Bar -->
+    <header class="top-bar">
+      <button type="button" class="brand" data-open="Dashboard">
+        <span class="brand-dot"></span>
+        <span class="brand-name">Scholar<span>Sync</span></span>
+        <span class="brand-tag" id="uptime-badge">CONNECTING</span>
+      </button>
+
+      <nav class="top-nav">
+        <button type="button" class="nav-link active" data-open="Dashboard">Overview</button>
+        <button type="button" class="nav-link" data-open="AI Chat">Comms</button>
+        <button type="button" class="nav-link" data-open="Agent Directory">Agents</button>
+        <button type="button" class="nav-link" data-open="Workflows">Pipelines</button>
+        <button type="button" class="nav-link" data-open="Coding Assistant">Workspace</button>
+        <button type="button" class="nav-link" data-open="Provider Settings">Settings</button><button type="button" class="nav-link" id="studio-link">Studio</button>
+      </nav>
+
+      <div class="top-right">
+        <button type="button" class="pill-toggle" id="aria-intro-btn">Replay Intro</button>
+        <button type="button" class="pill-toggle" id="aria-voice-btn">Voice: Off</button>
+      </div>
+    </header>
+
+    <!-- Middle Side Rails (Clean, Unobtrusive, Leaving Center 100% Open for Aria) -->
+    <main class="side-rails">
+      <aside class="left-rail" aria-label="Specialist Modules">
+        <div class="rail-label">MODULES</div>
+        <div id="module-list" class="module-list"></div>
+      </aside>
+
+      <aside class="right-rail" aria-label="Live Telemetry">
+        <div class="rail-label">SYSTEM TELEMETRY</div>
+        <div class="stat-block" data-open="Analytics">
+          <div class="stat-row"><span>Requests</span><strong id="stat-reqs">—</strong></div>
+          <div class="stat-row"><span>Sync Rate</span><strong id="stat-success">—</strong></div>
+          <div class="stat-row"><span>Latency</span><strong id="stat-latency">—</strong></div>
+          <div class="stat-row"><span>Mode</span><strong id="routing-mode-chip">Direct</strong></div>
+        </div>
+
+        <div class="rail-label" style="margin-top:14px">EXECUTION</div>
+        <div class="pipeline-mini" id="exec-list" data-open="Execution Monitor"></div>
+
+        <button type="button" class="scan-action" id="aria-scan-btn">Open Coding Workspace</button>
+      </aside>
+    </main>
+
+    <!-- Bottom Floating Dialogue & Command Bar -->
+    <footer class="bottom-bar">
+      <div class="aria-caption">
+        <span class="caption-badge" id="aria-state-tag">INTRO</span>
+        <span class="caption-status" id="aria-status-text">Initializing neural link</span>
+        <span class="caption-sep">·</span>
+        <span class="caption-text" id="aria-subtitle">Connecting to your private AI workspace…</span>
+      </div>
+
+      <div class="command-dock">
+        <input id="search" type="text" aria-label="Ask Aria" placeholder="Ask Aria anything — code, research, papers, data, or workspace...">
+        <button type="button" class="send-btn" id="ask">Send</button>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Side-Docked Workspace Drawer (Opens Beside Aria, Never Covers Her) -->
+  <aside id="panel" class="side-drawer" aria-hidden="true">
+    <div class="modal-head">
+      <div>
+        <small id="subheading">SCHOLARSYNC · LIVE WORKSPACE</small>
+        <h2 id="heading"></h2>
+      </div>
+      <div class="modal-actions">
+        <button id="speak-last" type="button" class="pill-toggle">Speak</button>
+        <button id="close" type="button" class="close-btn" aria-label="Close">×</button>
+      </div>
+    </div>
+    <section id="content"></section>
+  </aside>
+
+  <script src="/cinema/app.js"></script>
+</body>
+</html>

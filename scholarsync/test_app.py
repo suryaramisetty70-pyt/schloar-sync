@@ -30,7 +30,12 @@ class WorkflowTest(unittest.TestCase):
                 self.assertEqual(client.get('/mission.js').status_code,200)
                 self.assertEqual(client.get('/studio.js').status_code,200)
                 self.assertEqual(client.get('/studio.css').status_code,200)
-                self.assertIn('Research lab',client.get('/').text)
+                self.assertIn('cinema-stage',client.get('/').text)
+                self.assertIn('Research lab',client.get('/studio').text)
+                self.assertEqual(client.get('/cinema/app.js').status_code,200)
+                clip=client.get('/cinema/assets/aria/intro.mp4',headers={'Range':'bytes=0-1023'})
+                self.assertEqual(clip.status_code,206)
+                self.assertEqual(len(clip.content),1024)
                 self.assertEqual(client.post('/api/conversations/message',json={'message':'  '}).status_code,422)
     def test_specialist_chat_and_settings(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(module, 'DB', Path(tmp) / 'runs.sqlite3'), patch.dict(os.environ, {'AI_API_KEY':'test-secret','AI_MODEL':'gpt-4.1-mini','AI_BASE_URL':'https://api.openai.com/v1','SCHOLARSYNC_USERNAME':'owner','SCHOLARSYNC_PASSWORD':'test-password'}), patch.object(module, 'crew_answer', AsyncMock(return_value={'answer':'Test answer','mode':'specialist'})):

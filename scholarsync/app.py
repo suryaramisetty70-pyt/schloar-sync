@@ -15,6 +15,7 @@ from pathlib import Path
 import httpx
 from fastapi import FastAPI, HTTPException, Request as HTTPRequest
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from .provider import providers, generate, ProviderError
 from .specialists import execute_specialist, METHODS
@@ -238,7 +239,13 @@ async def execute(run_id, topic):
 
 @app.get('/')
 def index():
+    return FileResponse(ROOT / 'web' / 'cinema' / 'index.html')
+
+@app.get('/studio')
+def studio():
     return FileResponse(ROOT / 'web' / 'studio.html')
+
+app.mount('/cinema', StaticFiles(directory=ROOT / 'web' / 'cinema'), name='cinema')
 
 @app.get('/studio.css')
 def stylesheet():
@@ -282,7 +289,7 @@ def mission_events():
 
 @app.get('/api/health')
 def health():
-    return {'status':'ok','ai_configured':configured(),'agents':len(ROLES),'version':'4.0-mission'}
+    return {'status':'ok','ai_configured':configured(),'agents':len(ROLES),'version':'5.0-aria'}
 
 @app.get('/api/runs')
 def runs():
